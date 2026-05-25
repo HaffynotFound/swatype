@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Keyboard, Play, User, Users, Compass, AlertCircle, RefreshCw, LogOut, ArrowRight, Sparkles } from "lucide-react";
 import { Player, Room, ClientMessage, ServerMessage, RoomStatus } from "./types";
 import { playVictorySound } from "./utils/audio";
+import { saveLeaderboardScore } from "./supabase";
 import Leaderboard from "./components/Leaderboard";
 import RoomLobby from "./components/RoomLobby";
 import TypingEngine from "./components/TypingEngine";
 import ResultsDisplay from "./components/ResultsDisplay";
+import GlobalLeaderboard from "./components/GlobalLeaderboard";
 
 export default function App() {
   // Player persistence identity
@@ -24,6 +26,9 @@ export default function App() {
 
   // Sound triggers - Track previous status to trigger victory sound exactly once on transition
   const prevStatusRef = useRef<RoomStatus | null>(null);
+
+  // Ref to trigger global leaderboard refresh after score is saved
+  const [leaderboardRefreshKey, setLeaderboardRefreshKey] = useState(0);
 
   // Initialize unique playerId and nickname
   useEffect(() => {
@@ -98,10 +103,23 @@ export default function App() {
         if (data.type === "room-update") {
           setRoom(data.room);
 
-          // Play victory sound exactly once when room status transitions to 'results'
+          // Play victory sound and save score exactly once when room status transitions to 'results'
           const newStatus = data.room.status;
           if (newStatus === "results" && prevStatusRef.current === "racing") {
             playVictorySound();
+
+            // Save the player's score to the global leaderboard
+            const myStats = data.room.players[playerId];
+            if (myStats && myStats.wpm > 0) {
+              saveLeaderboardScore(
+                myStats.username,
+                myStats.wpm,
+                myStats.accuracy,
+                myStats.score
+              ).then(() => {
+                setLeaderboardRefreshKey((k) => k + 1);
+              });
+            }
           }
           prevStatusRef.current = newStatus;
         } else if (data.type === "error") {
@@ -252,7 +270,9 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col justify-center">
         {connectionState === "idle" || !room ? (
           /* LANDING PAGE DIRECT ENTRY */
-          <div className="max-w-2xl w-full mx-auto space-y-8 animate-fade-in py-12">
+          <div className="max-w-5xl w-full mx-auto lg:grid lg:grid-cols-3 lg:gap-8 animate-fade-in py-12">
+          {/* Left/Center: Original landing content */}
+          <div className="lg:col-span-2 space-y-8">
             {/* Logo and Intro Section */}
             <div className="text-center space-y-3">
               <div className="inline-block bg-[#e2b714]/10 border border-[#e2b714]/20 rounded-full px-4 py-1.5 mb-2">
@@ -351,6 +371,12 @@ export default function App() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Right Column: Global Leaderboard */}
+          <div className="lg:col-span-1 mt-8 lg:mt-0">
+            <GlobalLeaderboard key={leaderboardRefreshKey} />
+          </div>
           </div>
         ) : (
           /* ACTIVE ARENA ZONE Screen */

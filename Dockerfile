@@ -4,15 +4,16 @@ FROM node:20-alpine
 # Create app directory
 WORKDIR /usr/src/app
 
-# Install dependencies
+# Copy package files and install all deps (including devDeps needed for build)
 COPY package*.json ./
-RUN npm install --production
+RUN npm ci
 
-# Copy source
+# Copy source and build
 COPY . .
-
-# Build the client
 RUN npm run build
+
+# Remove devDependencies to keep image small
+RUN npm prune --production
 
 # Expose the port the app runs on
 ENV PORT 3000

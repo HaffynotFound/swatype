@@ -78,9 +78,13 @@ export default function App() {
     setLobbyError("");
     setConnectionState("connecting");
 
-    // WebSocket URL resolution compatible with AI Studio dynamic Cloud Run reverse-proxy hosting
+    // WebSocket URL resolution:
+    // - Prefer an explicit environment variable `VITE_WS_URL` when provided (useful when frontend
+    //   is hosted separately from the server, e.g., Vercel + Fly/Render).
+    // - Fall back to same-origin (protocol + host) when not provided.
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socketUrl = `${protocol}//${window.location.host}`;
+    const envSocket = (import.meta.env && (import.meta.env.VITE_WS_URL as string | undefined)) || undefined;
+    const socketUrl = envSocket ? envSocket : `${protocol}//${window.location.host}`;
 
     const socket = new WebSocket(socketUrl);
 

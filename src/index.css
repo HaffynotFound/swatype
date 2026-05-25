@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    background-color: #323437; /* Elegant Dark theme background */
+    color: #d1d0c5;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+}
+
+/* Customized Typing Animations / blinking caret */
+@keyframes caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.caret-active::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.5rem;
+  background-color: #e2b714;
+  margin-left: 2px;
+  animation: caret-blink 1s infinite;
+  vertical-align: middle;
+}
+
+/* Custom scrollbars for minimalist layout */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #323437;
+}
+::-webkit-scrollbar-thumb {
+  background: #2c2e31;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #e2b714;
+}

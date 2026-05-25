@@ -1,0 +1,6 @@
+{
+  "name": "Swatype",
+  "description": "A real-time competitive multiplayer typing race web application focusing on minimalist design, ultra-fast gameplay, and accurate WPM-based competition.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

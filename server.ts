@@ -11,7 +11,7 @@ async function startServer() {
   const server = createServer(app);
   const wss = new WebSocketServer({ noServer: true });
 
-  const PORT = 3000;
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
   // In-memory state
   const rooms = new Map<string, Room>();

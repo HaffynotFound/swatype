@@ -394,9 +394,22 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+
+    // Serve static assets with long cache lifetime (hashed filenames).
+    // Use a short maxAge for index.html by explicitly setting no-cache below.
+    app.use(express.static(distPath, { maxAge: '1y', etag: true }));
+
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const accept = (req.headers.accept || "").toString();
+      if (accept.includes("text/html")) {
+        // Always ask the browser to revalidate index.html to avoid serving
+        // an index that references assets the client doesn't have cached.
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.sendFile(path.join(distPath, "index.html"));
+      } else {
+        // For asset requests or API calls, return 404 rather than serving index.html
+        res.status(404).end();
+      }
     });
   }
 

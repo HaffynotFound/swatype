@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: swatype
+    env: docker
+    branch: main
+    dockerfilePath: Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+# If you prefer Render's Node environment instead of Docker, use this block:
+# services:
+#   - type: web
+#     name: swatype-node
+#     env: node
+#     branch: main
+#     buildCommand: npm ci && npm run build
+#     startCommand: npm start
+#     healthCheckPath: /api/health

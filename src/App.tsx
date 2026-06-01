@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Keyboard, Play, User, Users, Compass, AlertCircle, RefreshCw, LogOut, ArrowRight, Sparkles } from "lucide-react";
+import { Keyboard, User, Users, Compass, AlertCircle, RefreshCw, LogOut, ArrowRight, Sparkles, Target } from "lucide-react";
 import { Player, Room, ClientMessage, ServerMessage, RoomStatus } from "./types";
 import { playVictorySound } from "./utils/audio";
 import { saveLeaderboardScore } from "./supabase";
@@ -8,12 +8,16 @@ import RoomLobby from "./components/RoomLobby";
 import TypingEngine from "./components/TypingEngine";
 import ResultsDisplay from "./components/ResultsDisplay";
 import GlobalLeaderboard from "./components/GlobalLeaderboard";
+import PracticeMode from "./components/PracticeMode";
 
 export default function App() {
   // Player persistence identity
   const [playerId, setPlayerId] = useState("");
   const [username, setUsername] = useState("");
   const [isEditingUsername, setIsEditingUsername] = useState(false);
+
+  // App mode: home, multiplayer, or practice
+  const [mode, setMode] = useState<"home" | "multiplayer" | "practice">("home");
 
   // Connection and Room states
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -76,6 +80,7 @@ export default function App() {
     }
 
     setLobbyError("");
+    setMode("multiplayer");
     setConnectionState("connecting");
 
     // WebSocket URL resolution:
@@ -197,6 +202,7 @@ export default function App() {
     if (ws) {
       ws.close();
     }
+    setMode("home");
     setRoom(null);
     setConnectionState("idle");
     setLobbyError("");
@@ -213,7 +219,7 @@ export default function App() {
       {/* Header Visual Bar */}
       <header className="border-b border-[#2c2e31]/60 py-4 px-6 bg-[#2c2e31]/40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={handleLeaveRoom}>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => { if (mode === "practice") { setMode("home"); } else { handleLeaveRoom(); } }}>
             <div className="bg-[#e2b714] text-[#323437] p-2 rounded-lg font-bold">
               <Keyboard className="w-5 h-5" />
             </div>
@@ -272,7 +278,9 @@ export default function App() {
 
       {/* Main Container Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col justify-center">
-        {connectionState === "idle" || !room ? (
+        {mode === "practice" ? (
+          <PracticeMode onBackHome={() => setMode("home")} />
+        ) : connectionState === "idle" || !room ? (
           /* LANDING PAGE DIRECT ENTRY */
           <div className="max-w-5xl w-full mx-auto lg:grid lg:grid-cols-3 lg:gap-8 animate-fade-in py-12">
           {/* Left/Center: Original landing content */}
@@ -301,7 +309,7 @@ export default function App() {
             )}
 
             {/* Lobby Entry Options */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-lg mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-2xl mx-auto">
               {/* Box 1: Create room */}
               <div className="bg-[#2c2e31] border border-[#2c2e31]/60 rounded-xl p-6 flex flex-col justify-between hover:border-[#3c3e41] hover:shadow-xl transition-all duration-300">
                 <div>
@@ -330,6 +338,26 @@ export default function App() {
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
+                </button>
+              </div>
+
+              {/* Box 3: AI Coach Practice */}
+              <div className="bg-[#2c2e31] border border-[#2c2e31]/60 rounded-xl p-6 flex flex-col justify-between hover:border-[#3c3e41] hover:shadow-xl transition-all duration-300 group">
+                <div>
+                  <Target className="w-8 h-8 text-[#e2b714] mb-3" />
+                  <h3 className="font-sans font-extrabold text-lg text-[#d1d0c5]">
+                    AI Coach Practice
+                  </h3>
+                  <p className="text-xs text-[#646669] mt-1 font-sans">
+                    Practice solo while an AI coach analyzes your typing and delivers personalized feedback.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setMode("practice")}
+                  className="w-full mt-6 bg-[#e2b714]/10 hover:bg-[#e2b714]/20 active:scale-98 text-[#e2b714] font-sans font-bold py-3.5 px-4 rounded-xl transition-all text-sm flex items-center justify-center gap-2 cursor-pointer border border-[#e2b714]/20 hover:border-[#e2b714]/40"
+                >
+                  <span>Start Practice</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
 

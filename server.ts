@@ -1,8 +1,12 @@
+import dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+
 import express from "express";
 import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
 import { getRandomCorpus } from "./src/words";
 import { Room, Player, ClientMessage, ServerMessage, RoomStatus } from "./src/types";
 
@@ -33,6 +37,87 @@ async function startServer() {
   // Handle HTTP API health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", roomsCount: rooms.size });
+  });
+
+  // AI Feedback endpoint (solo practice mode)
+  const genAiApiKey = process.env.GEMINI_API_KEY || "";
+  let aiClient: GoogleGenAI | null = null;
+  if (genAiApiKey) {
+    try {
+      aiClient = new GoogleGenAI({ apiKey: genAiApiKey });
+    } catch (err) {
+      console.warn("[swatype] Failed to initialize GoogleGenAI client:", err);
+    }
+  }
+
+  const COACH_SYSTEM_PROMPT = `You are an expert typing coach. You analyze typing performance data and provide concise, supportive, actionable feedback.
+
+When given stats, respond with:
+1. A brief encouraging summary of their performance (1-2 sentences)
+2. 2-3 specific areas to work on based on their error patterns, speed, and accuracy
+3. 1-2 practical drills or techniques they can try
+
+Keep your response under 250 words. Be encouraging and specific. Use plain text without markdown formatting.`;
+
+  app.post("/api/ai-feedback", express.json(), async (req, res) => {
+    try {
+      if (!aiClient) {
+        return res.json({ message: "AI Coach is not available right now. Set GEMINI_API_KEY to enable it." });
+      }
+
+      const { action, stats, message, history } = req.body;
+
+      if (action === "analyze" && stats) {
+        const statsBlock = `
+Player Stats:
+- WPM: ${Math.round(stats.wpm)}
+- Accuracy: ${Math.round(stats.accuracy)}%
+- Score: ${Math.round(stats.score)}
+- Duration: ${stats.duration}s
+- Words: ${stats.wordsCorrect} correct out of ${stats.wordsTotal} total
+- Keystrokes: ${stats.correctKeystrokes} correct out of ${stats.totalKeystrokes} total
+- Word-by-word errors: ${stats.wordResults ? stats.wordResults.filter((w: any) => !w.correct).length : "N/A"} mistyped words
+`;
+
+        const response = await aiClient.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents: [{ role: "user", parts: [{ text: `${COACH_SYSTEM_PROMPT}\n\nHere is the typing data:\n${statsBlock}` }] }],
+        });
+        return res.json({ message: response.text || "Analysis complete." });
+      }
+
+      if (action === "chat") {
+        const contents: any[] = [
+          { role: "user", parts: [{ text: COACH_SYSTEM_PROMPT }] },
+          { role: "model", parts: [{ text: "Understood. I am an expert typing coach. I will analyze stats and respond with concise, actionable feedback." }] },
+        ];
+
+        if (stats) {
+          const statsBlock = `The player's stats for context:\n- WPM: ${Math.round(stats.wpm)}\n- Accuracy: ${Math.round(stats.accuracy)}%\n- Score: ${Math.round(stats.score)}\n- Duration: ${stats.duration}s\n- Words: ${stats.wordsCorrect}/${stats.wordsTotal}\n- Keystrokes: ${stats.correctKeystrokes}/${stats.totalKeystrokes}\n- Mistyped words: ${stats.wordResults ? stats.wordResults.filter((w: any) => !w.correct).length : "N/A"}`;
+          contents.push({ role: "user", parts: [{ text: statsBlock }] });
+          contents.push({ role: "model", parts: [{ text: "Got it. I have the player's stats for context." }] });
+        }
+
+        if (history && Array.isArray(history)) {
+          for (const msg of history) {
+            contents.push({ role: msg.role === "assistant" ? "model" : "user", parts: [{ text: msg.content }] });
+          }
+        }
+
+        contents.push({ role: "user", parts: [{ text: message || "Give me some typing tips." }] });
+
+        const response = await aiClient.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents,
+        });
+        return res.json({ message: response.text || "I'm here to help!" });
+      }
+
+      return res.json({ message: "Send typing stats for analysis or a chat message for coaching advice." });
+    } catch (err: any) {
+      console.error("[swatype] AI feedback error:", err);
+      return res.status(500).json({ message: "Sorry, I encountered an error processing your request. Please try again." });
+    }
   });
 
   // Attach WebSocket upgrade handling to same port

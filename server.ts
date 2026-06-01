@@ -6,7 +6,6 @@ import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import { getRandomCorpus } from "./src/words";
 import { Room, Player, ClientMessage, ServerMessage, RoomStatus } from "./src/types";
 
@@ -40,17 +39,9 @@ async function startServer() {
   });
 
   // AI Feedback endpoint (solo practice mode)
-  const genAiApiKey = process.env.GEMINI_API_KEY || "";
-  let aiClient: GoogleGenAI | null = null;
-  if (genAiApiKey) {
-    try {
-      aiClient = new GoogleGenAI({ apiKey: genAiApiKey });
-    } catch (err) {
-      console.warn("[swatype] Failed to initialize GoogleGenAI client:", err);
-    }
-  }
+  const nvidiaApiKey = process.env.NVIDIA_API_KEY || "";
 
-  const COACH_SYSTEM_PROMPT = `You are an expert typing coach. You analyze typing performance data and provide concise, supportive, actionable feedback.
+  const COACH_SYSTEM_PROMPT = `You are an expert typing coach. Analyze typing performance data and provide concise, supportive, actionable feedback.
 
 When given stats, respond with:
 1. A brief encouraging summary of their performance (1-2 sentences)
@@ -59,10 +50,32 @@ When given stats, respond with:
 
 Keep your response under 250 words. Be encouraging and specific. Use plain text without markdown formatting.`;
 
+  async function callNvidiaLLM(messages: { role: string; content: string }[]): Promise<string> {
+    const res = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${nvidiaApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "meta/llama-3.1-8b-instruct",
+        messages,
+        max_tokens: 500,
+        temperature: 0.7,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`NVIDIA API error ${res.status}: ${text}`);
+    }
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || "Analysis complete.";
+  }
+
   app.post("/api/ai-feedback", express.json(), async (req, res) => {
     try {
-      if (!aiClient) {
-        return res.json({ message: "AI Coach is not available right now. Set GEMINI_API_KEY to enable it." });
+      if (!nvidiaApiKey) {
+        return res.json({ message: "AI Coach is not available right now. Set NVIDIA_API_KEY to enable it." });
       }
 
       const { action, stats, message, history } = req.body;
@@ -78,39 +91,34 @@ Player Stats:
 - Keystrokes: ${stats.correctKeystrokes} correct out of ${stats.totalKeystrokes} total
 - Word-by-word errors: ${stats.wordResults ? stats.wordResults.filter((w: any) => !w.correct).length : "N/A"} mistyped words
 `;
-
-        const response = await aiClient.models.generateContent({
-          model: "gemini-2.0-flash",
-          contents: [{ role: "user", parts: [{ text: `${COACH_SYSTEM_PROMPT}\n\nHere is the typing data:\n${statsBlock}` }] }],
-        });
-        return res.json({ message: response.text || "Analysis complete." });
+        const reply = await callNvidiaLLM([
+          { role: "system", content: COACH_SYSTEM_PROMPT },
+          { role: "user", content: `Here is the typing data:\n${statsBlock}` },
+        ]);
+        return res.json({ message: reply });
       }
 
       if (action === "chat") {
-        const contents: any[] = [
-          { role: "user", parts: [{ text: COACH_SYSTEM_PROMPT }] },
-          { role: "model", parts: [{ text: "Understood. I am an expert typing coach. I will analyze stats and respond with concise, actionable feedback." }] },
+        const messages: { role: string; content: string }[] = [
+          { role: "system", content: COACH_SYSTEM_PROMPT },
         ];
 
         if (stats) {
           const statsBlock = `The player's stats for context:\n- WPM: ${Math.round(stats.wpm)}\n- Accuracy: ${Math.round(stats.accuracy)}%\n- Score: ${Math.round(stats.score)}\n- Duration: ${stats.duration}s\n- Words: ${stats.wordsCorrect}/${stats.wordsTotal}\n- Keystrokes: ${stats.correctKeystrokes}/${stats.totalKeystrokes}\n- Mistyped words: ${stats.wordResults ? stats.wordResults.filter((w: any) => !w.correct).length : "N/A"}`;
-          contents.push({ role: "user", parts: [{ text: statsBlock }] });
-          contents.push({ role: "model", parts: [{ text: "Got it. I have the player's stats for context." }] });
+          messages.push({ role: "user", content: statsBlock });
+          messages.push({ role: "assistant", content: "Got it. I have the player's stats for context." });
         }
 
         if (history && Array.isArray(history)) {
           for (const msg of history) {
-            contents.push({ role: msg.role === "assistant" ? "model" : "user", parts: [{ text: msg.content }] });
+            messages.push({ role: msg.role === "assistant" ? "assistant" : "user", content: msg.content });
           }
         }
 
-        contents.push({ role: "user", parts: [{ text: message || "Give me some typing tips." }] });
+        messages.push({ role: "user", content: message || "Give me some typing tips." });
 
-        const response = await aiClient.models.generateContent({
-          model: "gemini-2.0-flash",
-          contents,
-        });
-        return res.json({ message: response.text || "I'm here to help!" });
+        const reply = await callNvidiaLLM(messages);
+        return res.json({ message: reply });
       }
 
       return res.json({ message: "Send typing stats for analysis or a chat message for coaching advice." });

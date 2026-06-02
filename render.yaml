@@ -1,9 +1,10 @@
 services:
   - type: web
     name: swatype
-    env: docker
+    env: node
     branch: main
-    dockerfilePath: Dockerfile
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
 
